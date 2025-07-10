@@ -1,0 +1,27 @@
+{
+  "string": {
+    "name": "string",
+    "description": "string",
+    "config": {
+      "additionalProp1": {}
+    },
+    "risk_management": {
+      "max_daily_loss_limit": 5.0,
+      "max_consecutive_losses": 3,
+      "max_drawdown_limit": 15.0,
+      "risk_tolerance": "Moderate"
+    },
+    "signal_confirmation": {
+      "min_volume_threshold": 100000,
+      "macd_confirmation": true,
+      "multi_timeframe_confirmation": "15m + 1h align"
+    },
+    "custom_exit": {
+      "profit_target": 8.0,
+      "stop_loss": 4.0,
+      "time_based_exit": 60
+    },
+    "created_at": "2025-07-10T17:28:01.377964Z",
+    "updated_at": "2025-07-10T17:28:01.377964Z"
+  }
+}

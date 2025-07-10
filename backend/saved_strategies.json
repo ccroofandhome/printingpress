@@ -1,0 +1,92 @@
+{
+  "try": {
+    "name": "try",
+    "description": "",
+    "created_at": "2025-07-09T04:48:27.716112Z",
+    "updated_at": "2025-07-09T04:48:27.716112Z",
+    "config": {
+      "active_strategy": "rsi",
+      "rsi_overbought": 70,
+      "rsi_oversold": 30,
+      "rsi_timeframe": "5min",
+      "momentum_lookback": 14,
+      "momentum_threshold": 0.5,
+      "breakout_period": 20,
+      "breakout_multiplier": 2
+    },
+    "bot_controls": {
+      "botOn": true,
+      "liveMode": false,
+      "autoWithdraw": false,
+      "riskOffMode": false,
+      "trailingStops": true,
+      "trailingPercent": 2,
+      "aiTradeFilter": true,
+      "leverage": false,
+      "leveragePercent": 1.5,
+      "compounding": false,
+      "compoundingPercent": 50
+    }
+  },
+  "Another Test": {
+    "name": "Another Test",
+    "description": "Another test strategy",
+    "created_at": "2025-07-09T04:52:22.955591Z",
+    "updated_at": "2025-07-09T04:52:22.955591Z",
+    "config": {
+      "active_strategy": "momentum",
+      "rsi_overbought": 70,
+      "rsi_oversold": 30,
+      "rsi_timeframe": "5min",
+      "momentum_lookback": 14,
+      "momentum_threshold": 0.5,
+      "breakout_period": 20,
+      "breakout_multiplier": 2
+    },
+    "bot_controls": {
+      "botOn": false,
+      "liveMode": false,
+      "autoWithdraw": false,
+      "riskOffMode": false,
+      "trailingStops": false,
+      "trailingPercent": 2,
+      "aiTradeFilter": true,
+      "leverage": false,
+      "leveragePercent": 1.5,
+      "compounding": false,
+      "compoundingPercent": 50
+    }
+  },
+  "test": {
+    "name": "test",
+    "description": "",
+    "created_at": "2025-07-10T21:04:56.180149Z",
+    "updated_at": "2025-07-10T21:06:38.819292Z",
+    "config": {
+      "type": "Custom",
+      "parameters": [],
+      "createdAt": "2025-07-10T21:00:43.478Z",
+      "updatedAt": "2025-07-10T21:06:38.805Z"
+    },
+    "bot_controls": {
+      "enabled": true,
+      "riskLevel": "Medium"
+    }
+  },
+  "Test Strategy": {
+    "name": "Test Strategy",
+    "description": "A test strategy",
+    "created_at": "2025-07-10T21:17:10.877085Z",
+    "updated_at": "2025-07-10T21:17:10.877085Z",
+    "config": {
+      "type": "Custom",
+      "parameters": [],
+      "createdAt": "2025-07-10T21:00:43.478Z",
+      "updatedAt": "2025-07-10T21:06:38.805Z"
+    },
+    "bot_controls": {
+      "enabled": true,
+      "riskLevel": "Medium"
+    }
+  }
+}
