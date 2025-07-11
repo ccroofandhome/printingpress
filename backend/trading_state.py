@@ -35,6 +35,7 @@ class TradingState:
             "breakout_period": 20,
             "breakout_multiplier": 2.0
         }
+        self.bot_schedule = "24/7"  # "24/7" or "market"
         # ...other state 
 
 # Singleton instance for import

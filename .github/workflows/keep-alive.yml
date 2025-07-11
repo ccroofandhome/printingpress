@@ -1,0 +1,17 @@
+name: Keep Render Backend Alive
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'  # Runs every 10 minutes
+  workflow_dispatch:        # Optional manual trigger
+
+jobs:
+  ping-render:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Curl Ping to Render API Health Endpoint
+        run: curl -m 10 https://your-trading-bot-api.onrender.com/health || echo "Server did not respond"
+      - name: Log Response
+        run: |
+          echo "Health check completed at $(date)"
+          echo "Response: $(curl -s -m 10 https://your-trading-bot-api.onrender.com/health || echo 'No response')" 

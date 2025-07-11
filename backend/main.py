@@ -35,6 +35,15 @@ app.add_middleware(
 def root():
     return {"status": "ok"}
 
+@app.get("/health")
+def health_check():
+    """Health check endpoint for monitoring and keep-alive pings"""
+    return {
+        "status": "ok",
+        "timestamp": datetime.utcnow().isoformat(),
+        "service": "trading-bot-api"
+    }
+
 # Authentication endpoints
 @app.post("/register", response_model=Token)
 async def register(user_data: UserCreate):
@@ -768,7 +777,21 @@ def stop_trading():
 def get_bot_status():
     """Get current bot running status"""
     with state.lock:
-        return {"running": state.running}
+        return {
+            "running": state.running,
+            "bot_schedule": state.bot_schedule
+        }
+
+@app.post("/update-bot-schedule")
+def update_bot_schedule(schedule: str = Body(...)):
+    """Update bot schedule (24/7 or market)"""
+    if schedule not in ["24/7", "market"]:
+        raise HTTPException(status_code=400, detail="Schedule must be '24/7' or 'market'")
+    
+    with state.lock:
+        state.bot_schedule = schedule
+    
+    return {"status": "updated", "bot_schedule": state.bot_schedule}
 
 # Exchange and trading configuration endpoints
 @app.post("/set-exchange-config")

@@ -3,6 +3,8 @@ import time
 import random
 import requests
 from trading_state import state
+import datetime
+import pytz
 
 # Binance API configuration
 BINANCE_TESTNET_BASE_URL = "https://testnet.binance.vision"
@@ -49,7 +51,7 @@ def get_market_data():
     except Exception as e:
         print(f"Error getting market data: {e}")
         # Fallback to mock data
-        return random.uniform(29000, 31000)
+    return random.uniform(29000, 31000)
 
 def compute_mock_rsi(prices):
     # Very basic RSI mock: random between 20 and 80
@@ -134,8 +136,23 @@ def execute_trade(signal, price):
 
 def trading_loop():
     prices = []
+    eastern = pytz.timezone('US/Eastern')
     while True:
         if state.running:
+            # Check schedule
+            with state.lock:
+                schedule = getattr(state, 'bot_schedule', '24/7')
+            now_utc = datetime.datetime.utcnow().replace(tzinfo=pytz.utc)
+            now_est = now_utc.astimezone(eastern)
+            is_market_hours = (
+                now_est.weekday() < 5 and
+                (now_est.hour > 9 or (now_est.hour == 9 and now_est.minute >= 30)) and
+                (now_est.hour < 16 or (now_est.hour == 16 and now_est.minute == 0))
+            )
+            if schedule == 'market' and not is_market_hours:
+                # Skip trading outside market hours
+                time.sleep(5)
+                continue
             price = get_market_data()
             prices.append(price)
             if len(prices) > 50:  # Keep more prices for momentum/breakout strategies
