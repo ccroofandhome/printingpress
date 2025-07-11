@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { API_BASE_URL } from '@/lib/config';
+import { API_BASE_URL } from '../lib/config';
 
 interface UltimateROIStrategyProps {
   isActive: boolean;

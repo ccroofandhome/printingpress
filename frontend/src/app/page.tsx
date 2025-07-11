@@ -8,7 +8,7 @@ import StrategyDiagnostics from '../components/StrategyDiagnostics';
 import UltimateROIStrategy from '../components/UltimateROIStrategy';
 import ProtectedRoute from '../components/ProtectedRoute';
 import { useAuth } from '../contexts/AuthContext';
-import { API_BASE_URL } from '@/lib/config';
+import { API_BASE_URL } from '../lib/config';
 
 const sidebarItems = [
   { icon: '📂', label: 'Dashboard', dropdown: true, options: [
