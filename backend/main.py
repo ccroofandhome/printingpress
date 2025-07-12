@@ -5,6 +5,7 @@ from trading_state import TradingState
 from pydantic import BaseModel
 from datetime import datetime, timedelta
 from trading_loop import start_trading_loop
+from real_trading import real_trading_bot
 from typing import Dict, Any, List
 import random
 import json
@@ -16,6 +17,11 @@ from auth import (
     authenticate_user, create_user, create_access_token,
     get_current_active_user, get_user
 )
+from exchange_connectors import (
+    ExchangeConnectorFactory, ExchangeCredentials, 
+    Balance, Ticker, Order
+)
+from user_data import user_data_manager
 
 # Create singleton instance
 state = TradingState()
@@ -356,9 +362,16 @@ def execute_mock_trade(trade: TradeRequest):
         return {"position": pos, "trade": trade_entry, "cash": state.cash}
 
 @app.get("/performance-metrics")
-def get_performance_metrics():
+def get_performance_metrics(current_user: UserInDB = Depends(get_current_active_user)):
+    """Get performance metrics including real trading data"""
     with state.lock:
-        return {"performance_metrics": state.performance_metrics}
+        base_metrics = {"performance_metrics": state.performance_metrics}
+        
+        # Add real trading history
+        trade_history = real_trading_bot.get_trade_history(current_user.email)
+        base_metrics["real_trades"] = trade_history
+        
+        return base_metrics
 
 @app.post("/strategy-config")
 def update_strategy_config(config: Dict[str, Any] = Body(...)):
@@ -368,42 +381,32 @@ def update_strategy_config(config: Dict[str, Any] = Body(...)):
 
 # Strategy Management Endpoints
 @app.get("/saved-strategies")
-def get_saved_strategies():
-    """Get all saved strategies"""
-    strategies = load_saved_strategies()
+def get_saved_strategies(current_user: UserInDB = Depends(get_current_active_user)):
+    """Get all saved strategies for the current user"""
+    strategies = user_data_manager.get_user_strategies(current_user.email)
     return {"strategies": strategies}
 
 @app.post("/save-strategy")
-def save_strategy(request: StrategySaveRequest):
-    """Save a new strategy or update existing one"""
-    strategies = load_saved_strategies()
-    
+def save_strategy(request: StrategySaveRequest, current_user: UserInDB = Depends(get_current_active_user)):
+    """Save a new strategy or update existing one for the current user"""
     now = datetime.utcnow().isoformat() + "Z"
     
-    if request.name in strategies:
-        # Update existing strategy
-        strategies[request.name]["updated_at"] = now
-        strategies[request.name]["description"] = request.description
-        strategies[request.name]["config"] = request.config
-        strategies[request.name]["bot_controls"] = request.bot_controls
-    else:
-        # Create new strategy
-        strategies[request.name] = {
-            "name": request.name,
-            "description": request.description,
-            "created_at": now,
-            "updated_at": now,
-            "config": request.config,
-            "bot_controls": request.bot_controls
-        }
+    strategy_data = {
+        "name": request.name,
+        "description": request.description,
+        "created_at": now,
+        "updated_at": now,
+        "config": request.config,
+        "bot_controls": request.bot_controls
+    }
     
-    save_strategies_to_file(strategies)
-    return {"status": "saved", "strategy": strategies[request.name]}
+    user_data_manager.save_user_strategy(current_user.email, request.name, strategy_data)
+    return {"status": "saved", "strategy": strategy_data}
 
 @app.post("/load-strategy")
-def load_strategy(request: StrategyLoadRequest):
-    """Load a saved strategy and apply it"""
-    strategies = load_saved_strategies()
+def load_strategy(request: StrategyLoadRequest, current_user: UserInDB = Depends(get_current_active_user)):
+    """Load a saved strategy and apply it for the current user"""
+    strategies = user_data_manager.get_user_strategies(current_user.email)
     
     if request.name not in strategies:
         return {"error": "Strategy not found"}
@@ -419,33 +422,30 @@ def load_strategy(request: StrategyLoadRequest):
     return {"status": "loaded", "strategy": strategy}
 
 @app.delete("/delete-strategy")
-def delete_strategy(request: StrategyDeleteRequest):
-    """Delete a saved strategy"""
-    strategies = load_saved_strategies()
+def delete_strategy(request: StrategyDeleteRequest, current_user: UserInDB = Depends(get_current_active_user)):
+    """Delete a saved strategy for the current user"""
+    strategies = user_data_manager.get_user_strategies(current_user.email)
     
     if request.name not in strategies:
         return {"error": "Strategy not found"}
     
-    del strategies[request.name]
-    save_strategies_to_file(strategies)
+    user_data_manager.delete_user_strategy(current_user.email, request.name)
     
     return {"status": "deleted", "name": request.name}
 
 # Custom Strategy Management Endpoints
 @app.get("/custom-strategies")
-def get_custom_strategies():
-    """Get all custom strategies"""
-    strategies = load_custom_strategies()
+def get_custom_strategies(current_user: UserInDB = Depends(get_current_active_user)):
+    """Get all custom strategies for the current user"""
+    strategies = user_data_manager.get_user_custom_strategies(current_user.email)
     return {"strategies": strategies}
 
 @app.post("/custom-strategy")
-def save_custom_strategy(strategy: Dict[str, Any] = Body(...)):
-    """Save a custom strategy"""
-    strategies = load_custom_strategies()
-    
+def save_custom_strategy(strategy: Dict[str, Any] = Body(...), current_user: UserInDB = Depends(get_current_active_user)):
+    """Save a custom strategy for the current user"""
     # Generate ID if not provided
     if 'id' not in strategy:
-        strategy['id'] = f"strategy_{len(strategies) + 1}"
+        strategy['id'] = f"strategy_{datetime.now().timestamp()}"
     
     # Update timestamps
     now = datetime.utcnow().isoformat() + "Z"
@@ -453,25 +453,13 @@ def save_custom_strategy(strategy: Dict[str, Any] = Body(...)):
         strategy['createdAt'] = now
     strategy['updatedAt'] = now
     
-    # Find existing strategy or add new one
-    existing_index = next((i for i, s in enumerate(strategies) if s.get('id') == strategy['id']), None)
-    if existing_index is not None:
-        strategies[existing_index] = strategy
-    else:
-        strategies.append(strategy)
-    
-    save_custom_strategies_to_file(strategies)
+    user_data_manager.save_user_custom_strategy(current_user.email, strategy)
     return {"status": "saved", "strategy": strategy}
 
 @app.delete("/custom-strategy/{strategy_id}")
-def delete_custom_strategy(strategy_id: str):
-    """Delete a custom strategy"""
-    strategies = load_custom_strategies()
-    
-    # Find and remove the strategy
-    strategies = [s for s in strategies if s.get("id") != strategy_id]
-    save_custom_strategies_to_file(strategies)
-    
+def delete_custom_strategy(strategy_id: str, current_user: UserInDB = Depends(get_current_active_user)):
+    """Delete a custom strategy for the current user"""
+    user_data_manager.delete_user_custom_strategy(current_user.email, strategy_id)
     return {"status": "deleted", "strategy_id": strategy_id}
 
 # Risk Management Endpoints
@@ -762,25 +750,65 @@ def on_startup():
     start_trading_loop()
 
 @app.post("/start-trading")
-def start_trading():
-    with state.lock:
-        state.running = True
-    return {"status": "started"}
+def start_trading(current_user: UserInDB = Depends(get_current_active_user)):
+    """Start real trading for the authenticated user"""
+    try:
+        # Start the real trading bot for this user
+        success = real_trading_bot.start_trading(current_user.email)
+        
+        if success:
+            with state.lock:
+                state.running = True
+            return {
+                "status": "started", 
+                "message": "Real trading bot started",
+                "user_email": current_user.email
+            }
+        else:
+            return {
+                "status": "error",
+                "message": "Failed to start trading bot. Please check your exchange connections."
+            }
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": f"Error starting trading bot: {str(e)}"
+        }
 
 @app.post("/stop-trading")
-def stop_trading():
-    with state.lock:
-        state.running = False
-    return {"status": "stopped"}
+def stop_trading(current_user: UserInDB = Depends(get_current_active_user)):
+    """Stop real trading for the authenticated user"""
+    try:
+        # Stop the real trading bot
+        real_trading_bot.stop_trading()
+        
+        with state.lock:
+            state.running = False
+        return {
+            "status": "stopped", 
+            "message": "Real trading bot stopped",
+            "user_email": current_user.email
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": f"Error stopping trading bot: {str(e)}"
+        }
 
 @app.get("/bot-status")
-def get_bot_status():
-    """Get current bot running status"""
+def get_bot_status(current_user: UserInDB = Depends(get_current_active_user)):
+    """Get current bot running status and real trading information"""
     with state.lock:
-        return {
+        base_status = {
             "running": state.running,
             "bot_schedule": state.bot_schedule
         }
+        
+        # Add real trading status
+        trading_status = real_trading_bot.get_trading_status(current_user.email)
+        base_status.update(trading_status)
+        
+        return base_status
 
 @app.post("/update-bot-schedule")
 def update_bot_schedule(schedule: str = Body(...)):
@@ -795,30 +823,15 @@ def update_bot_schedule(schedule: str = Body(...)):
 
 # Exchange and trading configuration endpoints
 @app.post("/set-exchange-config")
-def set_exchange_config(config: ExchangeConfig):
-    """Set exchange configuration (testnet/mainnet, trading pair, test balance)"""
-    with state.lock:
-        state.exchange_config = {
-            "exchange": config.exchange,
-            "is_testnet": config.is_testnet,
-            "trading_pair": config.trading_pair,
-            "test_balance": config.test_balance
-        }
-        # Update cash balance for test mode
-        if config.is_testnet:
-            state.cash = config.test_balance
-    return {"status": "updated", "config": state.exchange_config}
+def set_exchange_config(config: ExchangeConfig, current_user: UserInDB = Depends(get_current_active_user)):
+    """Set exchange configuration for the current user"""
+    user_data_manager.update_user_exchange_config(current_user.email, config.dict())
+    return {"status": "updated", "config": config.dict()}
 
 @app.get("/get-exchange-config")
-def get_exchange_config():
-    """Get current exchange configuration"""
-    with state.lock:
-        config = getattr(state, 'exchange_config', {
-            "exchange": "binance",
-            "is_testnet": True,
-            "trading_pair": "BTCUSDT",
-            "test_balance": 10000.0
-        })
+def get_exchange_config(current_user: UserInDB = Depends(get_current_active_user)):
+    """Get current exchange configuration for the current user"""
+    config = user_data_manager.get_user_exchange_config(current_user.email)
     return {"config": config}
 
 @app.get("/get-current-price")
@@ -1276,3 +1289,188 @@ def simulate_trade(config: Dict[str, Any] = Body(...)):
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to simulate trades: {str(e)}") 
+
+class AddExchangeRequest(BaseModel):
+    platform: str
+    api_key: str
+    api_secret: str
+    passphrase: str = None  # For exchanges like KuCoin
+    sandbox: bool = False
+
+@app.post("/add-exchange")
+def add_exchange(req: AddExchangeRequest, current_user: UserInDB = Depends(get_current_active_user)):
+    """Add and validate exchange credentials"""
+    try:
+        # Create credentials object
+        credentials = ExchangeCredentials(
+            api_key=req.api_key,
+            api_secret=req.api_secret,
+            passphrase=req.passphrase,
+            sandbox=req.sandbox
+        )
+        
+        # Create connector and test connection
+        connector = ExchangeConnectorFactory.create_connector(req.platform.lower(), credentials)
+        is_valid, message = connector.test_connection()
+        
+        if is_valid:
+            # Store validated credentials for this user
+            exchange_data = {
+                "credentials": credentials.dict(),
+                "status": "connected",
+                "connected_at": datetime.now().isoformat(),
+                "last_validation": datetime.now().isoformat()
+            }
+            user_data_manager.add_user_exchange(current_user.email, req.platform.lower(), exchange_data)
+            
+            return {
+                "status": "success", 
+                "message": f"{req.platform} credentials validated and saved.",
+                "exchange": req.platform.lower(),
+                "connection_status": "connected"
+            }
+        else:
+            return {
+                "status": "error",
+                "message": f"Failed to validate {req.platform} credentials: {message}",
+                "exchange": req.platform.lower(),
+                "connection_status": "failed"
+            }
+    except ValueError as e:
+        return {
+            "status": "error",
+            "message": f"Unsupported exchange: {req.platform}. Supported exchanges: {', '.join(ExchangeConnectorFactory.get_supported_exchanges())}",
+            "supported_exchanges": ExchangeConnectorFactory.get_supported_exchanges()
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": f"Error adding exchange: {str(e)}"
+        }
+
+@app.get("/connected-exchanges")
+def get_connected_exchanges(current_user: UserInDB = Depends(get_current_active_user)):
+    """Get list of connected exchanges and their status"""
+    try:
+        user_exchanges = user_data_manager.get_user_exchanges(current_user.email)
+        exchanges = []
+        for exchange_name, exchange_data in user_exchanges.items():
+            exchanges.append({
+                "exchange": exchange_name,
+                "status": exchange_data.get("status", "unknown"),
+                "connected_at": exchange_data.get("connected_at"),
+                "last_validation": exchange_data.get("last_validation")
+            })
+        
+        return {
+            "status": "success",
+            "exchanges": exchanges,
+            "total_connected": len(exchanges)
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get connected exchanges: {str(e)}")
+
+@app.get("/exchange-balances/{exchange_name}")
+def get_exchange_balances(exchange_name: str, current_user: UserInDB = Depends(get_current_active_user)):
+    """Get balances for a specific connected exchange"""
+    try:
+        user_exchanges = user_data_manager.get_user_exchanges(current_user.email)
+        if exchange_name.lower() not in user_exchanges:
+            raise HTTPException(status_code=404, detail=f"Exchange {exchange_name} not found")
+        
+        exchange_data = user_exchanges[exchange_name.lower()]
+        credentials = ExchangeCredentials(**exchange_data["credentials"])
+        
+        connector = ExchangeConnectorFactory.create_connector(exchange_name.lower(), credentials)
+        balances = connector.get_balances()
+        
+        return {
+            "status": "success",
+            "exchange": exchange_name.lower(),
+            "balances": [balance.dict() for balance in balances]
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get balances: {str(e)}")
+
+@app.get("/exchange-tickers/{exchange_name}")
+def get_exchange_tickers(exchange_name: str, symbols: str = None, current_user: UserInDB = Depends(get_current_active_user)):
+    """Get ticker information for a specific connected exchange"""
+    try:
+        user_exchanges = user_data_manager.get_user_exchanges(current_user.email)
+        if exchange_name.lower() not in user_exchanges:
+            raise HTTPException(status_code=404, detail=f"Exchange {exchange_name} not found")
+        
+        exchange_data = user_exchanges[exchange_name.lower()]
+        credentials = ExchangeCredentials(**exchange_data["credentials"])
+        
+        connector = ExchangeConnectorFactory.create_connector(exchange_name.lower(), credentials)
+        
+        symbol_list = symbols.split(",") if symbols else None
+        tickers = connector.get_tickers(symbol_list)
+        
+        return {
+            "status": "success",
+            "exchange": exchange_name.lower(),
+            "tickers": [ticker.dict() for ticker in tickers]
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get tickers: {str(e)}")
+
+@app.post("/place-order/{exchange_name}")
+def place_exchange_order(exchange_name: str, order: Order, current_user: UserInDB = Depends(get_current_active_user)):
+    """Place an order on a specific connected exchange"""
+    try:
+        user_exchanges = user_data_manager.get_user_exchanges(current_user.email)
+        if exchange_name.lower() not in user_exchanges:
+            raise HTTPException(status_code=404, detail=f"Exchange {exchange_name} not found")
+        
+        exchange_data = user_exchanges[exchange_name.lower()]
+        credentials = ExchangeCredentials(**exchange_data["credentials"])
+        
+        connector = ExchangeConnectorFactory.create_connector(exchange_name.lower(), credentials)
+        result = connector.place_order(order)
+        
+        return {
+            "status": "success",
+            "exchange": exchange_name.lower(),
+            "order_result": result
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to place order: {str(e)}")
+
+@app.get("/supported-exchanges")
+def get_supported_exchanges():
+    """Get list of supported exchanges"""
+    return {
+        "status": "success",
+        "supported_exchanges": ExchangeConnectorFactory.get_supported_exchanges()
+    }
+
+@app.delete("/remove-exchange/{exchange_name}")
+def remove_exchange(exchange_name: str, current_user: UserInDB = Depends(get_current_active_user)):
+    """Remove a connected exchange"""
+    try:
+        user_exchanges = user_data_manager.get_user_exchanges(current_user.email)
+        if exchange_name.lower() not in user_exchanges:
+            raise HTTPException(status_code=404, detail=f"Exchange {exchange_name} not found")
+        
+        user_data_manager.remove_user_exchange(current_user.email, exchange_name.lower())
+        
+        return {
+            "status": "success",
+            "message": f"Exchange {exchange_name} removed successfully"
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to remove exchange: {str(e)}")
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000) 

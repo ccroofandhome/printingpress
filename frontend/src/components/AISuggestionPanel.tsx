@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
+import { API_BASE_URL } from '../lib/config';
 
 interface StockAnalysis {
   symbol: string;
@@ -218,7 +219,7 @@ export default function AISuggestionPanel({ selectedStocks = ['BTC', 'ETH', 'SOL
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch('http://localhost:8000/ai-analysis', {
+      const response = await fetch(`${API_BASE_URL}/ai-analysis`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

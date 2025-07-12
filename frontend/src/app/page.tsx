@@ -5,7 +5,7 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import AISuggestionPanel from '../components/AISuggestionPanel';
 import DynamicStrategyBuilder, { StrategyConfig } from '../components/DynamicStrategyBuilder';
 import StrategyDiagnostics from '../components/StrategyDiagnostics';
-import UltimateROIStrategy from '../components/UltimateROIStrategy';
+
 import ProtectedRoute from '../components/ProtectedRoute';
 import { useAuth } from '../contexts/AuthContext';
 import { API_BASE_URL } from '../lib/config';
@@ -15,7 +15,7 @@ const sidebarItems = [
     { label: 'Overview' },
     { label: 'Analytics' },
     { label: 'Logs' },
-    { label: 'Profile' },
+    { label: 'Profile', href: '/profile' },
     { label: 'Connections' },
     { label: 'Strategy Editor', href: '/strategy-editor' },
   ] },
@@ -50,7 +50,7 @@ function InfoTooltip({ text }: { text: string }) {
 }
 
 export default function Home() {
-  const { user, logout } = useAuth();
+  const { user, logout, token } = useAuth();
   const [dashboardOpen, setDashboardOpen] = useState(false);
   const [activePage, setActivePage] = useState('Overview');
   const [botRunning, setBotRunning] = useState(false);
@@ -66,6 +66,7 @@ export default function Home() {
   });
   const [availablePairs, setAvailablePairs] = useState<string[]>([]);
   const [currentPrice, setCurrentPrice] = useState<number | null>(null);
+  const [accountBalance, setAccountBalance] = useState<number | null>(null);
   const [showStrategyBuilder, setShowStrategyBuilder] = useState(false);
   const [editingStrategy, setEditingStrategy] = useState<StrategyConfig | null>(null);
   const [customStrategies, setCustomStrategies] = useState<StrategyConfig[]>([]);
@@ -82,6 +83,17 @@ export default function Home() {
   const [savedStrategies, setSavedStrategies] = useState<Record<string, any>>({});
   const [loadingStrategies, setLoadingStrategies] = useState(false);
   const [botSchedule, setBotSchedule] = useState<'24/7' | 'market'>('24/7');
+  
+  // Exchange connection state
+  const [platformName, setPlatformName] = useState('');
+  const [apiKey, setApiKey] = useState('');
+  const [apiSecret, setApiSecret] = useState('');
+  const [passphrase, setPassphrase] = useState('');
+  const [sandbox, setSandbox] = useState(false);
+  const [addPlatformStatus, setAddPlatformStatus] = useState<string | null>(null);
+  const [connectedExchanges, setConnectedExchanges] = useState<any[]>([]);
+  const [supportedExchanges, setSupportedExchanges] = useState<string[]>([]);
+  
   // Performance page stocks and state
   const stocks = [
     { key: 'BTC', label: 'BTC/USDT', color: '#00FFA3' },
@@ -204,7 +216,7 @@ export default function Home() {
       const config = strategyConfigs[strategyType];
       
       // Send to backend
-      const response = await fetch('${API_BASE_URL}/strategy-config', {
+      const response = await fetch(`${API_BASE_URL}/strategy-config`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(config)
@@ -223,7 +235,7 @@ export default function Home() {
       const config = botConfigs[botType];
       
       // Send to backend
-      const response = await fetch('${API_BASE_URL}/strategy-config', {
+      const response = await fetch(`${API_BASE_URL}/strategy-config`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(config)
@@ -242,14 +254,27 @@ export default function Home() {
 
   // Load saved strategies function
   const loadSavedStrategies = async () => {
+    if (!token) {
+      return; // Don't make API call if user is not authenticated
+    }
+    
     try {
       setLoadingStrategies(true);
-      const response = await fetch(`${API_BASE_URL}/saved-strategies`);
+      const headers: HeadersInit = {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      };
+      
+      const response = await fetch(`${API_BASE_URL}/saved-strategies`, {
+        headers
+      });
       if (response.ok) {
         const data = await response.json();
         console.log('Loaded saved strategies:', data);
         setSavedStrategies(data.strategies || {});
         console.log('Updated savedStrategies state:', data.strategies);
+      } else if (response.status === 403) {
+        console.log('User not authenticated for saved strategies');
       } else {
         console.error('Failed to load saved strategies:', response.status);
       }
@@ -260,31 +285,56 @@ export default function Home() {
     }
   };
 
-  // Load saved strategies on component mount
+  // Load saved strategies on component mount and when token changes
   React.useEffect(() => {
-    loadSavedStrategies();
-  }, []);
+    if (token) {
+      loadSavedStrategies();
+    }
+  }, [token]);
+
+  // Load exchange data on component mount and when token changes
+  React.useEffect(() => {
+    if (token) {
+      loadConnectedExchanges();
+      loadSupportedExchanges();
+    }
+  }, [token]);
 
   // Load bot status including schedule
   const loadBotStatus = async () => {
+    if (!token) {
+      return; // Don't make API call if user is not authenticated
+    }
+    
     try {
-      const response = await fetch(`${API_BASE_URL}/bot-status`);
+      const headers: HeadersInit = {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      };
+      
+      const response = await fetch(`${API_BASE_URL}/bot-status`, {
+        headers
+      });
       if (response.ok) {
         const data = await response.json();
         setBotRunning(data.running);
         if (data.bot_schedule) {
           setBotSchedule(data.bot_schedule);
         }
+      } else if (response.status === 403) {
+        console.log('User not authenticated for bot status');
       }
     } catch (error) {
       console.error('Error loading bot status:', error);
     }
   };
 
-  // Load bot status on component mount
+  // Load bot status on component mount and when token changes
   React.useEffect(() => {
-    loadBotStatus();
-  }, []);
+    if (token) {
+      loadBotStatus();
+    }
+  }, [token]);
 
   // Profitable trades data (placeholder)
   const winningTrades = 34;
@@ -305,7 +355,7 @@ export default function Home() {
   const [addForm, setAddForm] = useState<{ name: string; type: string; status: string }>({ name: '', type: 'Grid', status: 'Active' });
 
   // Add state for chart selection
-  const [selectedChart, setSelectedChart] = useState('BTC');
+  const [selectedChart, setSelectedChart] = useState<'Portfolio' | 'Bot'>('Portfolio');
   
   // Static strategy configuration state
   const [selectedStaticStrategy, setSelectedStaticStrategy] = useState('rsi');
@@ -455,27 +505,10 @@ export default function Home() {
     }
   };
 
-  // Fetch active strategy from backend
-  const fetchActiveStrategy = async () => {
-    try {
-      const response = await fetch('${API_BASE_URL}/strategy-config');
-      if (response.ok) {
-        const data = await response.json();
-        setActiveStrategy(data.active_strategy || null);
-      }
-    } catch (error) {
-      console.error('Error fetching active strategy:', error);
-    }
-  };
-
-  React.useEffect(() => {
-    fetchActiveStrategy();
-  }, []);
-
   const handleActivateStrategy = async (name: string, config: any) => {
     try {
       setSwitchingStrategy(true);
-      const response = await fetch('${API_BASE_URL}/strategy-config', {
+      const response = await fetch(`${API_BASE_URL}/strategy-config`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(config)
@@ -508,9 +541,12 @@ export default function Home() {
     try {
       if (!botRunning) {
         // Start trading
-        const response = await fetch('${API_BASE_URL}/start-trading', {
+        const response = await fetch(`${API_BASE_URL}/start-trading`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' }
+          headers: { 
+            'Content-Type': 'application/json',
+            ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+          }
         });
         if (response.ok) {
           setBotRunning(true);
@@ -519,9 +555,12 @@ export default function Home() {
         }
       } else {
         // Stop trading
-        const response = await fetch('${API_BASE_URL}/stop-trading', {
+        const response = await fetch(`${API_BASE_URL}/stop-trading`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' }
+          headers: { 
+            'Content-Type': 'application/json',
+            ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+          }
         });
         if (response.ok) {
           setBotRunning(false);
@@ -537,7 +576,11 @@ export default function Home() {
   // Exchange configuration functions
   const loadExchangeConfig = async () => {
     try {
-      const response = await fetch('${API_BASE_URL}/get-exchange-config');
+      const response = await fetch(`${API_BASE_URL}/get-exchange-config`, {
+        headers: {
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        }
+      });
       if (response.ok) {
         const data = await response.json();
         setExchangeConfig(data.config);
@@ -549,9 +592,12 @@ export default function Home() {
 
   const updateExchangeConfig = async (newConfig: any) => {
     try {
-      const response = await fetch('${API_BASE_URL}/set-exchange-config', {
+      const response = await fetch(`${API_BASE_URL}/set-exchange-config`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        },
         body: JSON.stringify(newConfig)
       });
       if (response.ok) {
@@ -565,7 +611,7 @@ export default function Home() {
 
   const loadAvailablePairs = async () => {
     try {
-      const response = await fetch('${API_BASE_URL}/available-pairs');
+      const response = await fetch(`${API_BASE_URL}/available-pairs`);
       if (response.ok) {
         const data = await response.json();
         setAvailablePairs(data.pairs || []);
@@ -577,7 +623,7 @@ export default function Home() {
 
   const fetchCurrentPrice = async () => {
     try {
-      const response = await fetch('${API_BASE_URL}/get-current-price');
+      const response = await fetch(`${API_BASE_URL}/get-current-price`);
       if (response.ok) {
         const data = await response.json();
         if (data.price) {
@@ -589,17 +635,64 @@ export default function Home() {
     }
   };
 
+  const fetchAccountBalance = async () => {
+    try {
+      // First get connected exchanges
+      const exchangesResponse = await fetch(`${API_BASE_URL}/connected-exchanges`, {
+        headers: {
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        }
+      });
+      
+      if (exchangesResponse.ok) {
+        const exchangesData = await exchangesResponse.json();
+        let totalBalance = 0;
+        
+        // Fetch balance from each connected exchange
+        for (const exchange of exchangesData.exchanges) {
+          try {
+            const balanceResponse = await fetch(`${API_BASE_URL}/exchange-balances/${exchange.exchange}`, {
+              headers: {
+                ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+              }
+            });
+            
+            if (balanceResponse.ok) {
+              const balanceData = await balanceResponse.json();
+              // Sum up USDT balances (or main quote currency)
+              for (const balance of balanceData.balances) {
+                if (balance.currency === 'USDT' || balance.currency === 'USD') {
+                  totalBalance += parseFloat(balance.free) + parseFloat(balance.used);
+                }
+              }
+            }
+          } catch (error) {
+            console.error(`Error fetching balance from ${exchange.exchange}:`, error);
+          }
+        }
+        
+        setAccountBalance(totalBalance);
+      }
+    } catch (error) {
+      console.error('Error fetching account balance:', error);
+    }
+  };
+
   // Load exchange config and pairs on component mount
   useEffect(() => {
     loadExchangeConfig();
     loadAvailablePairs();
-    // Fetch price every 10 seconds
-    const priceInterval = setInterval(fetchCurrentPrice, 10000);
+    // Fetch balance every 30 seconds
+    const balanceInterval = setInterval(fetchAccountBalance, 30000);
     
     // Sync money mode with exchange config
     const syncModeWithConfig = async () => {
       try {
-        const response = await fetch('${API_BASE_URL}/get-exchange-config');
+        const response = await fetch(`${API_BASE_URL}/get-exchange-config`, {
+          headers: {
+            ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+          }
+        });
         if (response.ok) {
           const data = await response.json();
           const isTestnet = data.config.is_testnet;
@@ -613,7 +706,11 @@ export default function Home() {
     // Fetch bot status
     const fetchBotStatus = async () => {
       try {
-        const response = await fetch('${API_BASE_URL}/bot-status');
+        const response = await fetch(`${API_BASE_URL}/bot-status`, {
+          headers: {
+            ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+          }
+        });
         if (response.ok) {
           const data = await response.json();
           setBotRunning(data.running);
@@ -625,15 +722,16 @@ export default function Home() {
     
     syncModeWithConfig();
     fetchBotStatus();
+    fetchAccountBalance(); // Initial fetch
     
     // Set up interval to refresh bot status every 5 seconds
     const botStatusInterval = setInterval(fetchBotStatus, 5000);
     
     return () => {
-      clearInterval(priceInterval);
+      clearInterval(balanceInterval);
       clearInterval(botStatusInterval);
     };
-  }, []);
+  }, [token]);
 
   const toggleLiveMode = () => {
     // Implement live mode toggle logic
@@ -665,6 +763,11 @@ export default function Home() {
 
   // Update handleSaveStrategy to use these values
   const handleSaveStrategy = async (strategyConfig: StrategyConfig) => {
+    if (!token) {
+      alert('Please log in to save strategies.');
+      return;
+    }
+    
     // Prepare payload for backend
     const payload = {
       name: strategyConfig.name,
@@ -683,13 +786,18 @@ export default function Home() {
     try {
       const response = await fetch(`${API_BASE_URL}/save-strategy`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
         body: JSON.stringify(payload),
       });
       if (response.ok) {
         alert('Strategy saved successfully!');
         setShowStrategyBuilder(false);
         loadSavedStrategies();
+      } else if (response.status === 403) {
+        alert('Please log in to save strategies.');
       } else {
         alert('Failed to save strategy.');
       }
@@ -726,15 +834,115 @@ export default function Home() {
     setShowStrategyBuilder(true);
   };
 
+  // Exchange connection handlers
+  const handleAddPlatform = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAddPlatformStatus(null);
+    try {
+      const res = await fetch(`${API_BASE_URL}/add-exchange`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          platform: platformName,
+          api_key: apiKey,
+          api_secret: apiSecret,
+          passphrase: passphrase || undefined,
+          sandbox: sandbox,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setAddPlatformStatus(`✅ ${data.message}`);
+        setPlatformName('');
+        setApiKey('');
+        setApiSecret('');
+        setPassphrase('');
+        setSandbox(false);
+        // Refresh connected exchanges
+        loadConnectedExchanges();
+      } else {
+        setAddPlatformStatus(`❌ ${data.message || 'Failed to add platform.'}`);
+      }
+    } catch (err) {
+      setAddPlatformStatus('❌ Error connecting to backend.');
+    }
+  };
+
+  const loadConnectedExchanges = async () => {
+    if (!token) {
+      return; // Don't make API call if user is not authenticated
+    }
+    
+    try {
+      const headers: HeadersInit = {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      };
+      
+      const response = await fetch(`${API_BASE_URL}/connected-exchanges`, {
+        headers
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setConnectedExchanges(data.exchanges || []);
+      } else if (response.status === 403) {
+        console.log('User not authenticated for connected exchanges');
+      }
+    } catch (error) {
+      console.error('Error loading connected exchanges:', error);
+    }
+  };
+
+  const loadSupportedExchanges = async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/supported-exchanges`);
+      if (response.ok) {
+        const data = await response.json();
+        setSupportedExchanges(data.supported_exchanges || []);
+      }
+    } catch (error) {
+      console.error('Error loading supported exchanges:', error);
+    }
+  };
+
+  const removeExchange = async (exchangeName: string) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/remove-exchange/${exchangeName}`, {
+        method: 'DELETE',
+      });
+      if (response.ok) {
+        loadConnectedExchanges();
+      }
+    } catch (error) {
+      console.error('Error removing exchange:', error);
+    }
+  };
+
   // Remove static RSI/Momentum/Breakout fields and use dynamic builder
   const [strategyParams, setStrategyParams] = useState<any[]>([]);
   const [showAddParam, setShowAddParam] = useState(false);
   const [newParam, setNewParam] = useState<any>({ name: '', type: 'number', value: '', min: '', max: '', options: '' });
 
   // Performance data for different time ranges
-  const botPerformanceDataDay = botPerformanceData;
-  const botPerformanceDataMonth = botPerformanceData;
-  const botPerformanceDataYear = botPerformanceData;
+  const botPerformanceDataDay = [
+    { time: '09:00', value: 10000 },
+    { time: '10:00', value: 10100 },
+    { time: '11:00', value: 10200 },
+    { time: '12:00', value: 10300 },
+    { time: '13:00', value: 10400 },
+  ];
+  const botPerformanceDataMonth = [
+    { time: 'Week 1', value: 10000 },
+    { time: 'Week 2', value: 10200 },
+    { time: 'Week 3', value: 10400 },
+    { time: 'Week 4', value: 10600 },
+  ];
+  const botPerformanceDataYear = [
+    { time: 'Q1', value: 10000 },
+    { time: 'Q2', value: 10500 },
+    { time: 'Q3', value: 11000 },
+    { time: 'Q4', value: 11500 },
+  ];
 
   // Replace static config section with dynamic builder
   return (
@@ -768,6 +976,11 @@ export default function Home() {
                     onClick={() => { 
                       setActivePage(opt.label); 
                       setDashboardOpen(false); 
+                      // If Profile is selected, navigate to profile page
+                      if (opt.label === 'Profile' && opt.href) {
+                        window.location.href = opt.href;
+                        return;
+                      }
                       // If Strategy Editor is selected, show the strategy editor content
                       if (opt.label === 'Strategy Editor') {
                         // The content will be rendered in the main area based on activePage
@@ -979,10 +1192,7 @@ export default function Home() {
 
         
         {/* Bot controls moved to StrategyEditor */}
-        <div className="mt-6 text-center">
-          <div className="text-sm text-[#A0A0A0] mb-2">Bot Controls</div>
-          <div className="text-xs text-[#A0A0A0]">All bot controls are now available in the Strategy Editor panel below.</div>
-        </div>
+
       </aside>
 
       {/* Main Area */}
@@ -1013,6 +1223,12 @@ export default function Home() {
                 Welcome, {user?.username || 'User'}
               </span>
               <button
+                onClick={() => window.location.href = '/profile'}
+                className="px-3 py-1 text-xs bg-blue-600/40 text-blue-300 rounded-lg hover:bg-blue-500/40 transition-colors"
+              >
+                Profile
+              </button>
+              <button
                 onClick={logout}
                 className="px-3 py-1 text-xs bg-red-600/40 text-red-300 rounded-lg hover:bg-red-500/40 transition-colors"
               >
@@ -1032,7 +1248,20 @@ export default function Home() {
                   <span className="text-3xl font-extrabold text-cyan-400 tracking-tight">Overview</span>
                   <InfoTooltip text="This page provides a summary of your trading bot's performance, profit, and key metrics at a glance." />
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
+                  {/* Account Balance Card */}
+                  <div className="bg-[#181c23] rounded-xl p-6 border border-[#232837] flex flex-col justify-between">
+                    <div>
+                      <div className="text-[#A0A0A0] text-sm font-semibold mb-1">Account Balance</div>
+                      <div className="text-3xl font-bold text-cyan-400">
+                        {accountBalance ? `$${accountBalance.toLocaleString()}` : 'Loading...'}
+                      </div>
+                      <div className="flex justify-between mt-2 text-xs text-[#A0A0A0]">
+                        <span>Total Balance</span>
+                        <span>Connected: <span className="text-green-400 font-semibold">Active</span></span>
+                      </div>
+                    </div>
+                  </div>
                   {/* Profit Card */}
                   <div className="bg-[#181c23] rounded-xl p-6 border border-[#232837] flex flex-col justify-between">
                     <div>
@@ -1044,14 +1273,27 @@ export default function Home() {
                       </div>
                     </div>
                   </div>
+                  {/* Trading Stats Card */}
+                  <div className="bg-[#181c23] rounded-xl p-6 border border-[#232837] flex flex-col justify-between">
+                    <div>
+                      <div className="text-[#A0A0A0] text-sm font-semibold mb-1">Trading Stats</div>
+                      <div className="text-3xl font-bold text-cyan-400">{winPercent}%</div>
+                      <div className="flex justify-between mt-2 text-xs text-[#A0A0A0]">
+                        <span>Win Rate</span>
+                        <span>Trades: <span className="text-white font-semibold">{totalClosedTrades}</span></span>
+                      </div>
+                    </div>
+                  </div>
                   {/* Bot Snapshot Card */}
                   <div className="bg-[#181c23] rounded-xl p-6 border border-[#232837] flex flex-col justify-between">
                     <div className="flex justify-between items-center mb-2">
                       <div className="text-[#A0A0A0] text-sm font-semibold">Bot Snapshot</div>
-                      <span className="text-xs px-2 py-1 rounded bg-[#232837] text-[#A0A0A0]">PAUSED</span>
+                      <span className={`text-xs px-2 py-1 rounded ${botRunning ? 'bg-green-900/40 text-green-300' : 'bg-[#232837] text-[#A0A0A0]'}`}>
+                        {botRunning ? 'ACTIVE' : 'PAUSED'}
+                      </span>
                     </div>
                     <div className="flex flex-col gap-1 text-sm">
-                      <span>🕒 7:58:09 PM</span>
+                      <span>🕒 {new Date().toLocaleTimeString()}</span>
                       <span>Daily: <span className="text-cyan-300">+$0.00</span></span>
                       <span>Open Positions: <span className="text-white">0</span></span>
                     </div>
@@ -1244,27 +1486,7 @@ export default function Home() {
                 <StrategyDiagnostics />
               </div>
               
-              {/* Ultimate ROI Strategy */}
-              <div className="mb-8">
-                <UltimateROIStrategy 
-                  isActive={activeStrategy === '🔥 Ultimate ROI'}
-                  onToggle={(active) => {
-                    if (active) {
-                      handleActivateStrategy('🔥 Ultimate ROI', {
-                        name: 'Ultimate ROI Strategy',
-                        description: 'Dynamic Compounding + Auto-Reallocation + Leverage',
-                        daily_target_return: 2.0,
-                        compounding_enabled: true,
-                        reallocation_interval_minutes: 15,
-                        leverage_enabled: true,
-                        max_leverage: 5.0
-                      });
-                    } else {
-                      handleActivateStrategy('', {});
-                    }
-                  }}
-                />
-              </div>
+
             </>
           )}
           {activePage === 'Analytics' && (
@@ -1545,24 +1767,80 @@ export default function Home() {
                 </div>
               </div>
               <div className="mb-2">
-                <div className="text-lg font-semibold text-white mb-2">Add Custom Platform</div>
-                <form className="bg-[#232837] rounded-lg p-4 flex flex-col gap-4">
-                  <input
-                    type="text"
-                    placeholder="Platform Name"
-                    className="bg-[#181c23] text-white rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-cyan-400 text-sm"
-                  />
+                <div className="text-lg font-semibold text-white mb-2">Connected Exchanges</div>
+                {connectedExchanges.length > 0 ? (
+                  <div className="space-y-2 mb-4">
+                    {connectedExchanges.map((exchange, index) => (
+                      <div key={index} className="bg-[#232837] rounded-lg p-3 flex items-center justify-between">
+                        <div className="flex items-center space-x-3">
+                          <div className={`w-3 h-3 rounded-full ${exchange.status === 'connected' ? 'bg-green-400' : 'bg-red-400'}`}></div>
+                          <span className="text-white font-medium capitalize">{exchange.exchange}</span>
+                          <span className="text-gray-400 text-sm">{exchange.status}</span>
+                        </div>
+                        <button 
+                          onClick={() => removeExchange(exchange.exchange)}
+                          className="text-red-400 hover:text-red-300 text-sm"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-gray-400 text-sm mb-4">No exchanges connected</div>
+                )}
+                
+                <div className="text-lg font-semibold text-white mb-2">Add Exchange</div>
+                <form className="bg-[#232837] rounded-lg p-4 flex flex-col gap-4" onSubmit={handleAddPlatform}>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-2">Exchange</label>
+                    <select 
+                      className="w-full bg-[#181c23] text-white rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-cyan-400 text-sm"
+                      value={platformName}
+                      onChange={e => setPlatformName(e.target.value)}
+                      required
+                    >
+                      <option value="">Select Exchange</option>
+                      {supportedExchanges.map(exchange => (
+                        <option key={exchange} value={exchange}>{exchange.toUpperCase()}</option>
+                      ))}
+                    </select>
+                  </div>
                   <input
                     type="text"
                     placeholder="API Key"
                     className="bg-[#181c23] text-white rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-cyan-400 text-sm"
+                    value={apiKey}
+                    onChange={e => setApiKey(e.target.value)}
+                    required
                   />
                   <input
                     type="text"
                     placeholder="API Secret"
                     className="bg-[#181c23] text-white rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-cyan-400 text-sm"
+                    value={apiSecret}
+                    onChange={e => setApiSecret(e.target.value)}
+                    required
                   />
+                  <input
+                    type="text"
+                    placeholder="Passphrase (for KuCoin)"
+                    className="bg-[#181c23] text-white rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-cyan-400 text-sm"
+                    value={passphrase}
+                    onChange={e => setPassphrase(e.target.value)}
+                  />
+                  <div className="flex items-center space-x-2">
+                    <input
+                      type="checkbox"
+                      id="sandbox"
+                      checked={sandbox}
+                      onChange={e => setSandbox(e.target.checked)}
+                      className="rounded border-gray-600 text-cyan-400 focus:ring-cyan-400"
+                    />
+                    <label htmlFor="sandbox" className="text-sm text-gray-300">Use Sandbox/Testnet</label>
+                  </div>
                   <button className="px-4 py-2 bg-cyan-400 text-black rounded-lg font-medium hover:bg-cyan-300 transition-colors w-fit self-end">Add Connection</button>
+                  {addPlatformStatus && <div className="mt-2 text-sm text-white">{addPlatformStatus}</div>}
                 </form>
               </div>
             </div>
@@ -2277,9 +2555,12 @@ export default function Home() {
                   e.preventDefault();
                   // Save changes to backend
                   const updated = { ...selectedStrategy, ...editForm };
-                  await fetch('${API_BASE_URL}/save-strategy', {
+                  await fetch(`${API_BASE_URL}/save-strategy`, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 
+                      'Content-Type': 'application/json',
+                      'Authorization': `Bearer ${token}`
+                    },
                     body: JSON.stringify(updated),
                   });
                   setSavedStrategies((prev: any) => ({ ...prev, [updated.name]: updated }));
@@ -2664,3 +2945,5 @@ export default function Home() {
     </ProtectedRoute>
   );
 }
+
+

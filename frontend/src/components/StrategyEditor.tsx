@@ -1,6 +1,8 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { API_BASE_URL } from '../lib/config';
+import { useAuth } from '../contexts/AuthContext';
 
 interface StrategyConfig {
   active_strategy: string;
@@ -50,6 +52,7 @@ function InfoTooltip({ text }: { text: string }) {
 }
 
 const StrategyEditor: React.FC<StrategyEditorProps> = ({ className = '' }) => {
+  const { token } = useAuth();
   const [config, setConfig] = useState<StrategyConfig>({
     active_strategy: 'rsi',
     rsi_overbought: 70,
@@ -84,11 +87,21 @@ const StrategyEditor: React.FC<StrategyEditorProps> = ({ className = '' }) => {
   }, []);
 
   const fetchConfig = async () => {
+    if (!token) {
+      return; // Don't make API call if user is not authenticated
+    }
+    
     try {
-      const response = await fetch('http://127.0.0.1:8000/strategy-config');
+      const response = await fetch(`${API_BASE_URL}/strategy-config`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
       if (response.ok) {
         const data = await response.json();
         setConfig(data.strategy_config);
+      } else if (response.status === 403) {
+        console.log('User not authenticated for strategy config');
       }
     } catch (error) {
       console.error('Failed to fetch strategy config:', error);
@@ -96,14 +109,20 @@ const StrategyEditor: React.FC<StrategyEditorProps> = ({ className = '' }) => {
   };
 
   const saveConfig = async () => {
+    if (!token) {
+      setMessage('Please log in to save strategy changes');
+      return;
+    }
+    
     setLoading(true);
     setMessage('');
     
     try {
-      const response = await fetch('http://127.0.0.1:8000/strategy-config', {
+      const response = await fetch(`${API_BASE_URL}/strategy-config`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
         },
         body: JSON.stringify(config),
       });
@@ -111,6 +130,8 @@ const StrategyEditor: React.FC<StrategyEditorProps> = ({ className = '' }) => {
       if (response.ok) {
         setMessage('Strategy updated successfully!');
         setTimeout(() => setMessage(''), 3000);
+      } else if (response.status === 403) {
+        setMessage('Please log in to save strategy changes');
       } else {
         setMessage('Failed to update strategy');
       }

@@ -2,6 +2,8 @@
 
 import React, { useState, useEffect } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { API_BASE_URL } from '../lib/config';
+import { useAuth } from '../contexts/AuthContext';
 
 interface UnifiedStrategyCenterProps {
   onStrategySelect?: (strategy: any) => void;
@@ -31,6 +33,8 @@ export default function UnifiedStrategyCenter({
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState<'all' | 'RSI' | 'Momentum' | 'Breakout' | 'Custom'>('all');
   const [sortBy, setSortBy] = useState<'name' | 'performance' | 'lastTrade'>('name');
+  const { token } = useAuth ? useAuth() : { token: null };
+  const [currentActiveStrategy, setCurrentActiveStrategy] = useState(activeStrategy || null);
 
   // Mock data for demonstration
   const strategies: Strategy[] = [
@@ -121,6 +125,31 @@ export default function UnifiedStrategyCenter({
       case 'Breakout': return 'text-[#4F8CFF]';
       case 'Custom': return 'text-purple-400';
       default: return 'text-gray-400';
+    }
+  };
+
+  const handleActivateStrategy = async (strategy: Strategy) => {
+    if (onStrategyActivate) {
+      onStrategyActivate(strategy);
+      setCurrentActiveStrategy(strategy.name);
+      return;
+    }
+    try {
+      const response = await fetch(`${API_BASE_URL}/strategy-config`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify({ active_strategy: strategy.name })
+      });
+      if (response.ok) {
+        setCurrentActiveStrategy(strategy.name);
+      } else {
+        alert('Failed to activate strategy');
+      }
+    } catch (err) {
+      alert('Error activating strategy');
     }
   };
 
@@ -240,7 +269,7 @@ export default function UnifiedStrategyCenter({
         {sortedStrategies.map(strategy => (
           <div 
             key={strategy.id}
-            className="bg-[#1a1d25] rounded-lg p-4 border border-gray-700 hover:border-[#00FFA3] transition-colors cursor-pointer"
+            className={`bg-[#1a1d25] rounded-lg p-4 border ${currentActiveStrategy === strategy.name ? 'border-[#00FFA3]' : 'border-gray-700'} hover:border-[#00FFA3] transition-colors cursor-pointer`}
             onClick={() => onStrategySelect?.(strategy)}
           >
             <div className="flex items-start justify-between mb-3">
@@ -266,13 +295,14 @@ export default function UnifiedStrategyCenter({
             
             <div className="mt-3 flex space-x-2">
               <button
-                onClick={(e) => {
+                onClick={e => {
                   e.stopPropagation();
-                  onStrategyActivate?.(strategy);
+                  if (currentActiveStrategy !== strategy.name) handleActivateStrategy(strategy);
                 }}
-                className="flex-1 px-3 py-1 bg-[#00FFA3] text-black text-sm font-medium rounded hover:bg-[#00CC82] transition-colors"
+                className={`flex-1 px-3 py-1 ${currentActiveStrategy === strategy.name ? 'bg-gray-400 text-black cursor-not-allowed' : 'bg-[#00FFA3] text-black hover:bg-[#00CC82]'} text-sm font-medium rounded transition-colors`}
+                disabled={currentActiveStrategy === strategy.name}
               >
-                Activate
+                {currentActiveStrategy === strategy.name ? 'Active' : 'Activate'}
               </button>
               <button
                 onClick={(e) => {

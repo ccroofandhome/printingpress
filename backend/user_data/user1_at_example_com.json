@@ -1,0 +1,50 @@
+{
+  "exchanges": {
+    "btcc": {
+      "credentials": {
+        "api_key": "user1_key",
+        "api_secret": "user1_secret"
+      },
+      "status": "connected",
+      "connected_at": "2024-01-15T10:00:00Z"
+    }
+  },
+  "strategies": {
+    "strategy1": {
+      "name": "User1 Strategy",
+      "description": "Strategy for user 1",
+      "config": {
+        "rsi_overbought": 70
+      }
+    }
+  },
+  "custom_strategies": [],
+  "exchange_config": {
+    "exchange": "binance",
+    "is_testnet": true,
+    "trading_pair": "BTCUSDT",
+    "test_balance": 10000.0
+  },
+  "risk_management": {
+    "max_daily_loss_limit": 5.0,
+    "max_consecutive_losses": 3,
+    "max_drawdown_limit": 15.0,
+    "risk_tolerance": "Moderate"
+  },
+  "signal_confirmation": {
+    "min_volume_threshold": 100000,
+    "macd_confirmation": true,
+    "multi_timeframe_confirmation": "15m + 1h align"
+  },
+  "custom_exit": {
+    "profit_target": 8.0,
+    "stop_loss": 4.0,
+    "time_based_exit": 60
+  },
+  "bot_status": {
+    "running": false,
+    "schedule": "24/7"
+  },
+  "created_at": "2025-07-11T18:03:48.677297",
+  "updated_at": "2025-07-11T18:03:48.678335"
+}
