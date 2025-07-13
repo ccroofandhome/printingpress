@@ -162,6 +162,7 @@ export default function Home() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify(schedule)
       });
@@ -218,7 +219,10 @@ export default function Home() {
       // Send to backend
       const response = await fetch(`${API_BASE_URL}/strategy-config`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
         body: JSON.stringify(config)
       });
 
@@ -237,7 +241,10 @@ export default function Home() {
       // Send to backend
       const response = await fetch(`${API_BASE_URL}/strategy-config`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
         body: JSON.stringify(config)
       });
 
@@ -815,7 +822,10 @@ export default function Home() {
     if (confirm('Are you sure you want to delete this strategy?')) {
       try {
         const response = await fetch(`${API_BASE_URL}/custom-strategy/${strategyId}`, {
-          method: 'DELETE'
+          method: 'DELETE',
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
         });
 
         if (response.ok) {
@@ -841,7 +851,10 @@ export default function Home() {
     try {
       const res = await fetch(`${API_BASE_URL}/add-exchange`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
         body: JSON.stringify({
           platform: platformName,
           api_key: apiKey,
@@ -909,6 +922,9 @@ export default function Home() {
     try {
       const response = await fetch(`${API_BASE_URL}/remove-exchange/${exchangeName}`, {
         method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
       });
       if (response.ok) {
         loadConnectedExchanges();
